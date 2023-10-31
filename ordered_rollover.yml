@@ -1,0 +1,81 @@
+- name: 'Run the script to find Leader Broker ID'
+  hosts: kafka_broker
+  become: true
+  gather_facts: yes
+  tasks:
+     - import_role:
+         name: confluent.platform.variables
+
+     - name: Determine Zookeeper leader and followers
+       include_role:
+         name: confluent.platform.kafka_broker
+         tasks_from: dynamic_groups.yml
+
+- name: 'Perform action on Non Leader Brokers First '
+  hosts: kafka_broker_non_controller
+  become: true
+  serial: 1
+  gather_facts: yes
+  tasks:
+     - import_role:
+        name: confluent.platform.variables
+
+     - name: Stop Kafka Service
+       block:
+           - name: 'Stop Kafka Service'
+             systemd:
+              name: "{{ item }}"
+              state: stopped
+             with_items:
+              - confluent-server.service
+             ignore_errors: true
+
+           - name: 'Restart Server'
+             reboot:
+             become: true
+             ignore_errors: true
+
+           - name: sleep for 1 min and continue with play
+             wait_for:
+               timeout: 60
+             connection: local
+             become: false
+
+           - name: Wait for Health Checks to Complete
+             include_role:
+               name: confluent.platform.kafka_broker
+               tasks_from: health_check.yml
+
+- name: 'Perform action on Leader Broker '
+  hosts: kafka_broker_controller
+  become: true
+  gather_facts: yes
+  tasks:
+     - import_role:
+        name: confluent.platform.variables
+
+     - name: Stop Kafka service
+       block:
+           - name: 'Stop service and restart'
+             systemd:
+                name: "{{ item }}"
+                state: stopped
+             with_items:
+              - confluent-server.service
+             ignore_errors: true
+
+           - name: 'Reboot Server'
+             reboot:
+             become: true
+             ignore_errors: true
+
+           - name: sleep for 1 min and continue with play
+             wait_for:
+                timeout: 60
+             connection: local
+             become: false
+
+           - name: Wait for Health Checks to Complete
+             include_role:
+               name: confluent.platform.kafka_broker
+               tasks_from: health_check.yml

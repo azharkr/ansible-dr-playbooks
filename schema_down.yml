@@ -1,0 +1,40 @@
+---
+- name: Find Random SR Node
+  hosts: "{{ (groups['schema_registry'] | shuffle)[0:1] }}"
+  gather_facts: true
+  become: true
+  tasks:
+    - name: Stop SR Service
+      systemd:
+        name: confluent-schema-registry.service
+        state: stopped
+    - name: Check SR Status
+      systemd:
+        name: confluent-schema-registry.service
+      register: sr_status
+    - debug:
+        msg: "{{ sr_status.status.ActiveState }}"
+
+    - name: sleep for 1 min and continue with play
+      wait_for:
+        timeout: 60
+      connection: local
+      become: false
+
+- name: Confirm Cluster Responds
+  hosts: "{{ (groups['zookeeper'] | shuffle)[0:1] }}"
+  become: true
+  tasks:
+    - name: Run kafka-topics command
+      shell: "kafka-topics --bootstrap-server {{ groups['kafka_broker'][0]}}:9092,{{ groups['kafka_broker'][1]}}:9092 --list"
+
+
+- name: Bring affected SR up
+  hosts: schema_registry
+  gather_facts: true
+  become: true
+  tasks:
+    - name: Start all SRs
+      systemd:
+        name: confluent-schema-registry.service
+        state: started

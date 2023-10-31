@@ -1,0 +1,12 @@
+
+- name: Show broker status
+  hosts: kafka_broker
+  gather_facts: true
+  become: true
+  tasks:
+    - name: State should be Started
+      systemd:
+        name: confluent-server.service
+      register: broker_status
+    - debug:
+        msg: "{{ broker_status }}"

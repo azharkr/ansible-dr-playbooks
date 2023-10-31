@@ -1,0 +1,57 @@
+
+- name: 'Run the script to find Leader Broker ID'
+  hosts: kafka_broker
+  become: true
+  gather_facts: yes
+  tasks:
+     - import_role:
+         name: confluent.platform.variables
+
+     - name: Determine BK controller and non-controller groups
+       include_role:
+         name: confluent.platform.kafka_broker
+         tasks_from: dynamic_groups.yml
+
+
+- name: Stop Broker
+  hosts: "{{ (groups['kafka_broker_non_controller'] | shuffle)[0:2] }}" #brings down 2 BK. to bring down 1, use [0:1]
+  gather_facts: true
+  become: true
+  tasks:
+    - import_role:
+        name: confluent.platform.variables
+
+    - name: Stop Broker  Service
+      systemd:
+        name: confluent-server.service
+        state: stopped
+    - name: Check Broker Status
+      systemd:
+        name: confluent-server.service
+      register: random_nonc_broker_status
+    - debug:
+        msg: "{{ random_nonc_broker_status.status.ActiveState }}"
+
+    - name: sleep for 1 min and continue with play
+      wait_for:
+        timeout: 60
+      connection: local
+      become: false
+
+- name: Confirm Cluster Responds
+  hosts: "{{ (groups['zookeeper'] | shuffle)[0:1] }}"
+  become: true
+  tasks:
+    - name: Run kafka-topics command
+      shell: "kafka-topics --bootstrap-server {{ groups['kafka_broker'][0]}}:9092,{{ groups['kafka_broker'][1]}}:9092,{{ groups['kafka_broker'][2]}}:9092,{{ groups['kafka_broker'][3]}}:9092 --list"
+
+
+- name: Bring affected BKs up
+  hosts: kafka_broker
+  gather_facts: true
+  become: true
+  tasks:
+    - name: Start all BKs
+      systemd:
+        name: confluent-server.service
+        state: started

@@ -1,0 +1,40 @@
+---
+- name: Find one Zookeeper Node
+  hosts: "{{ (groups['zookeeper'] | shuffle)[0:2] }}" #brings down 2 ZK. to bring down 1, use [0:1]
+  gather_facts: true
+  become: true
+  tasks:
+    - name: Stop Zookeeper Service
+      systemd:
+        name: confluent-zookeeper.service
+        state: stopped
+    - name: Check ZK Status
+      systemd:
+        name: confluent-zookeeper.service
+      register: random_zookeeper_status
+    - debug:
+        msg: "{{ random_zookeeper_status.status.ActiveState }}"
+
+    - name: sleep for 1 min and continue with play
+      wait_for:
+        timeout: 60
+      connection: local
+      become: false
+
+- name: Confirm Cluster Responds
+  hosts: "{{ (groups['zookeeper'] | shuffle)[0:1] }}"
+  become: true
+  tasks:
+    - name: Run kafka-topics command
+      shell: "kafka-topics --bootstrap-server {{ groups['kafka_broker'][0]}}:9092,{{ groups['kafka_broker'][1]}}:9092 --list"
+
+
+- name: Bring affected ZKs up
+  hosts: zookeeper
+  gather_facts: true
+  become: true
+  tasks:
+    - name: Start all ZKs
+      systemd:
+        name: confluent-zookeeper.service
+        state: started

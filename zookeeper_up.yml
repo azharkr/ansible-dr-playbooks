@@ -1,0 +1,11 @@
+---
+
+- name: Ensure affected ZKs up
+  hosts: zookeeper
+  gather_facts: true
+  become: true
+  tasks:
+    - name: State should be Started
+      systemd:
+        name: confluent-zookeeper.service
+        state: started

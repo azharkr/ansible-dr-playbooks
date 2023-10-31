@@ -1,0 +1,59 @@
+- name: Stop DC_A
+  hosts: all
+  gather_facts: true
+  become: true
+  tasks:
+
+    - name: Stop Broker Service
+      systemd:
+        name: confluent-server.service
+        state: stopped
+      when: ('az_a_hosts' in group_names) and ('kafka_broker' in group_names)
+
+    - name: Stop Zookeeper Service
+      systemd:
+        name: confluent-zookeeper.service
+        state: stopped
+      when: ('az_a_hosts' in group_names) and ('zookeeper' in group_names)
+
+    - name: Stop SR Service
+      systemd:
+        name: confluent-schema-registry.service
+        state: stopped
+      when: ('az_a_hosts' in group_names) and ('schema_registry' in group_names)
+
+    - name: sleep for 1 min and continue with play
+      wait_for:
+        timeout: 60
+      connection: local
+      become: false
+
+- name: Confirm Cluster Responds
+  hosts: "{{ (groups['zookeeper'] | shuffle)[0:1] }}"
+  become: true
+  tasks:
+    - name: Run kafka-topics command
+      shell: "kafka-topics --bootstrap-server {{ groups['kafka_broker'][0]}}:9092,{{ groups['kafka_broker'][1]}}:9092,{{ groups['kafka_broker'][2]}}:9092,{{ groups['kafka_broker'][3]}}:9092 --list"
+      when: "'az_a_hosts' not in group_names" #run for zookeeper not in DC_A
+
+- name: Bring affected DC up
+  hosts: all
+  gather_facts: true
+  become: true
+  tasks:
+    - name: Start all BKs
+      systemd:
+        name: confluent-server.service
+        state: started
+      when: ('az_a_hosts' in group_names) and ('kafka_broker' in group_names)
+    - name: Start all ZKs
+      systemd:
+        name: confluent-zookeeper.service
+        state: started
+      when: ('az_a_hosts' in group_names) and ('zookeeper' in group_names)
+    - name: Start all SRs
+      systemd:
+        name: confluent-schema-registry.service
+        state: started
+      when: ('az_a_hosts' in group_names) and ('schema_registry' in group_names)
+
